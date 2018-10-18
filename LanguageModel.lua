@@ -145,6 +145,35 @@ function LM:decode_string(encoded)
 end
 
 
+function LM:reset_and_seed(kwargs)
+  local T = utils.get_kwarg(kwargs, 'length', 100)
+  local start_text = utils.get_kwarg(kwargs, 'start_text', '')
+  local verbose = utils.get_kwarg(kwargs, 'verbose', 0)
+  local sample = utils.get_kwarg(kwargs, 'sample', 1)
+  local temperature = utils.get_kwarg(kwargs, 'temperature', 1)
+
+  local sampled = torch.LongTensor(1, T)
+  self:resetStates()
+
+  if #start_text > 0 then
+    if verbose > 0 then
+      print('Seeding with: "' .. start_text .. '"')
+    end
+    local x = self:encode_string(start_text):view(1, -1)
+    local T0 = x:size(2)
+    sampled[{{}, {1, T0}}]:copy(x)
+    self.scores = self:forward(x)[{{}, {T0, T0}}]
+    self.first_t = T0 + 1
+  else
+    if verbose > 0 then
+      print('Seeding with uniform probabilities')
+    end
+    local w = self.net:get(1).weight
+    self.scores = w.new(1, 1, self.vocab_size):fill(1)
+    self.first_t = 1
+  end
+end
+
 --[[
 Sample from the language model. Note that this will reset the states of the
 underlying RNNs.
@@ -164,42 +193,23 @@ function LM:sample(kwargs)
   local temperature = utils.get_kwarg(kwargs, 'temperature', 1)
 
   local sampled = torch.LongTensor(1, T)
-  self:resetStates()
 
-  local scores, first_t
-  if #start_text > 0 then
-    if verbose > 0 then
-      print('Seeding with: "' .. start_text .. '"')
-    end
-    local x = self:encode_string(start_text):view(1, -1)
-    local T0 = x:size(2)
-    sampled[{{}, {1, T0}}]:copy(x)
-    scores = self:forward(x)[{{}, {T0, T0}}]
-    first_t = T0 + 1
-  else
-    if verbose > 0 then
-      print('Seeding with uniform probabilities')
-    end
-    local w = self.net:get(1).weight
-    scores = w.new(1, 1, self.vocab_size):fill(1)
-    first_t = 1
-  end
-  
   local _, next_char = nil, nil
-  for t = first_t, T do
+  for t = self.first_t, T do
     if sample == 0 then
       _, next_char = scores:max(3)
       next_char = next_char[{{}, {}, 1}]
     else
-       local probs = torch.div(scores, temperature):double():exp():squeeze()
+       local probs = torch.div(self.scores, temperature):double():exp():squeeze()
        probs:div(torch.sum(probs))
        next_char = torch.multinomial(probs, 1):view(1, 1)
     end
     sampled[{{}, {t, t}}]:copy(next_char)
-    scores = self:forward(next_char)
+    self.scores = self:forward(next_char)
   end
 
-  self:resetStates()
+  -- Next time we go back to the first position in the array.
+  self.first_t = 1
   return self:decode_string(sampled[1])
 end
 

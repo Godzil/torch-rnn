@@ -13,6 +13,7 @@ cmd:option('-temperature', 1)
 cmd:option('-gpu', -1)
 cmd:option('-gpu_backend', 'cuda')
 cmd:option('-verbose', 0)
+cmd:option('-count', 1)
 cmd:option('-seed', 0)
 local opt = cmd:parse(arg)
 
@@ -43,5 +44,11 @@ end
 
 model:evaluate()
 
-local sample = model:sample(opt)
-print(sample)
+model:reset_and_seed(opt)
+
+for i=1, opt.count do
+  local sample = model:sample(opt)
+  io.write(sample)
+end
+
+print("")
