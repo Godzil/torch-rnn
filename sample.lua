@@ -13,6 +13,7 @@ cmd:option('-temperature', 1)
 cmd:option('-gpu', -1)
 cmd:option('-gpu_backend', 'cuda')
 cmd:option('-verbose', 0)
+cmd:option('-seed', 0)
 local opt = cmd:parse(arg)
 
 
@@ -35,6 +36,10 @@ else
   msg = 'Running in CPU mode'
 end
 if opt.verbose == 1 then print(msg) end
+
+if opt.seed > 0 then
+   torch.manualSeed(opt.seed)
+end
 
 model:evaluate()
 
